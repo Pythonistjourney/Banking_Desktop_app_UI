@@ -1,0 +1,47 @@
+SignupScreen {
+    background-color: #FFFFFF;
+}
+
+QLabel#title {
+    color: #2E7D32;
+    font-size: 36px;
+    font-weight: bold;
+}
+
+QWidget#formContainer {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    border: 1px solid #E8F5E9;
+}
+
+QLineEdit {
+    padding: 12px;
+    border: 1px solid #E8F5E9;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #FFFFFF;
+}
+
+QLineEdit:focus {
+    border: 1px solid #4CAF50;
+}
+
+QPushButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton:hover {
+    background-color: #4CAF50;
+}
+
+QLabel#errorLabel {
+    color: #F44336;
+    font-size: 12px;
+}

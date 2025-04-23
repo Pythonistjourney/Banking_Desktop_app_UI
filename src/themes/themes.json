@@ -1,0 +1,30 @@
+{
+    "themes": [
+        {
+            "id": "dark",
+            "variables": {
+                "--background": "#1a1a1a",
+                "--foreground": "#ffffff",
+                "--primary": "#2d2d2d",
+                "--primary-foreground": "#ffffff",
+                "--secondary": "#3d3d3d",
+                "--input": "#2d2d2d",
+                "--border": "#3d3d3d",
+                "--radius": "5px"
+            }
+        },
+        {
+            "id": "light",
+            "variables": {
+                "--background": "#ffffff",
+                "--foreground": "#000000",
+                "--primary": "#f0f0f0",
+                "--primary-foreground": "#000000",
+                "--secondary": "#e0e0e0",
+                "--input": "#f0f0f0",
+                "--border": "#d0d0d0",
+                "--radius": "5px"
+            }
+        }
+    ]
+}

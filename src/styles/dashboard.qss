@@ -1,0 +1,35 @@
+DashboardScreen {
+    background-color: #FFFFFF;
+}
+
+QLabel#title {
+    color: #2E7D32;
+    font-size: 36px;
+    font-weight: bold;
+}
+
+QWidget#contentContainer {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    border: 1px solid #E8F5E9;
+}
+
+QLabel {
+    color: #333333;
+    font-size: 16px;
+}
+
+QPushButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton:hover {
+    background-color: #4CAF50;
+}

@@ -1,0 +1,48 @@
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
+
+class SplashScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(1000, 700)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(40)
+
+        # Bank name
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        layout.addWidget(bank_name)
+
+        # Tagline
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        layout.addWidget(tagline)
+
+        # Welcome message with fade-in animation
+        welcome_message = QLabel("Welcome to AUT Finance Bank...")
+        welcome_message.setObjectName("welcome_message")
+        layout.addWidget(welcome_message)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+        # Start animation
+        self.start_animation(welcome_message)
+
+    def start_animation(self, widget):
+        anim = QPropertyAnimation(widget, b"windowOpacity")
+        anim.setDuration(800)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
+
+        # Transition to login screen after animation
+        QTimer.singleShot(3000, self.finish_splash)
+
+    def finish_splash(self):
+        self.parent().switch_screen('Login')
+        self.close()

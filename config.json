@@ -1,0 +1,9 @@
+{
+    "DEFAULT_THEME": "dark",
+    "WINDOW_SIZE": {
+        "width": 1000,
+        "height": 700
+    },
+    "APP_NAME": "AUT Finance Bank Desktop",
+    "DEMO_MODE": true
+}

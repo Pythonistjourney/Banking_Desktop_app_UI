@@ -1,0 +1,103 @@
+LoginScreen {
+    background-color: #FFFFFF;
+}
+
+QFrame#header {
+    background-color: #FFFFFF;
+}
+
+QLabel#bankName {
+    font-size: 24px;
+    font-weight: bold;
+    color: #FFFFFF;
+    background-color: #2E7D32;
+    border-radius: 100px;
+    text-align: center;
+    padding: 20px;
+}
+
+QFrame#content {
+    background-color: #FFFFFF;
+    padding: 40px;
+}
+
+QFrame#formFrame {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    min-width: 400px;
+    border: 1px solid #E8F5E9;
+}
+
+QLineEdit {
+    padding: 12px;
+    border: 1px solid #E8F5E9;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #FFFFFF;
+}
+
+QLineEdit:focus {
+    border: 1px solid #4CAF50;
+}
+
+QPushButton#rememberCheck {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    text-align: left;
+    font-size: 14px;
+}
+
+QPushButton#rememberCheck:checked {
+    color: #4CAF50;
+}
+
+QPushButton#forgotPassword {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    text-align: right;
+    font-size: 14px;
+}
+
+QPushButton#forgotPassword:hover {
+    color: #4CAF50;
+}
+
+QPushButton#loginButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton#loginButton:hover {
+    background-color: #4CAF50;
+}
+
+QLabel#signupText {
+    color: #666;
+    font-size: 14px;
+}
+
+QPushButton#signupButton {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton#signupButton:hover {
+    color: #4CAF50;
+}
+
+QLabel#errorLabel {
+    color: #F44336;
+    font-size: 12px;
+    padding: 5px;
+}

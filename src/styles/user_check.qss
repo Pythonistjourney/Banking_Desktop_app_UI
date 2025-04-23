@@ -1,0 +1,7 @@
+UserCheckScreen { background-color: var(--card); }
+
+QLabel { color: var(--card-foreground); font-size: 24px; font-weight: bold; }
+
+QPushButton { background-color: var(--primary); color: var(--primary-foreground); border-radius: var(--radius); padding: 10px 20px; font-size: 16px; }
+
+QPushButton:hover { background-color: var(--ring); }
