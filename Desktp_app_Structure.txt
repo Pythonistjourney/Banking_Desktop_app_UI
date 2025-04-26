@@ -1,0 +1,82 @@
+Directory Structure:
+
+├── context/
+├── images/
+│   ├── recipients/
+│   ├── users/
+├── navigation/
+├── screens/
+│   ├── signup/
+├── services/
+├── src/
+│   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── client.py
+│   ├── context/
+│   │   ├── user_context.py
+│   ├── main.py
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── schemas.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── api.py
+│   │   ├── transaction_service.py
+│   │   ├── user_service.py
+│   ├── styles/
+│   │   ├── __init__.py
+│   │   ├── dashboard.qss
+│   │   ├── global.qss
+│   │   ├── global_styles.py
+│   │   ├── login.qss
+│   │   ├── signup.qss
+│   │   ├── splash.qss
+│   │   ├── user_check.qss
+│   ├── themes/
+│   │   ├── __init__.py
+│   │   ├── theme_loader.py
+│   │   ├── themes.json
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── main_window.py
+│   │   ├── navigation/
+│   │   │   ├── __init__.py
+│   │   │   ├── navigation_manager.py
+│   │   ├── screens/
+│   │   │   ├── __init__.py
+│   │   │   ├── dashboard.py
+│   │   │   ├── login.py
+│   │   │   ├── main_window.py
+│   │   │   ├── signup/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── signup_screen.py
+│   │   │   ├── signup.py
+│   │   │   ├── splash/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── splash_screen.py
+│   │   │   ├── splash.py
+│   │   │   ├── transfer/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── transfer_screen.py
+│   │   │   ├── trnasfer.py
+│   │   │   ├── user_check.py
+│   │   ├── theme/
+│   │   │   ├── theme_loader.py
+│   │   ├── widgets/
+│   │   │   ├── __init__.py
+│   │   │   ├── custom.py
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── avatar_generator.py
+│   │   ├── config.py
+│   │   ├── logger.py
+│   │   ├── security.py
+│   │   ├── theme_loader.py
+│   │   ├── validators.py
+├── styles/
+│   ├── global_styles.py
+├── utils/
+│   ├── read_all_files.py

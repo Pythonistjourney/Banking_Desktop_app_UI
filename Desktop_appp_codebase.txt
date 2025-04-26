@@ -1,0 +1,2658 @@
+d:/banking-desktop-app/app/src/main.py
+<DOCUMENT>
+import sys
+from PySide6.QtWidgets import QApplication
+from src.ui.navigation.navigation_manager import NavigationManager
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = NavigationManager(app)  # Pass the app instance here
+    sys.exit(app.exec())
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/api/auth.py
+<DOCUMENT>
+from src.api.client import APIClient
+import logging
+
+logger = logging.getLogger(__name__)
+
+class AuthAPI:
+    def __init__(self):
+        self.client = APIClient()
+
+    async def login(self, email, password):
+        logger.debug(f"AuthAPI login called with email: {email}")
+        # Mock demo credentials
+        if email == "user@example.com" and password == "password123":
+            logger.info("Demo credentials matched, returning mock token")
+            return {"data": {"access_token": "demo_token"}}
+        else:
+            logger.error("Invalid credentials")
+            raise Exception("Invalid email or password")
+
+    async def register(self, user_data):
+        logger.debug(f"Registering user: {user_data['Email']}")
+        # Mock registration for testing
+        return {"data": {"user_id": "mock_user_id"}}
+
+    async def request(self, method, endpoint, json=None):
+        logger.debug(f"Mock API request: {method} {endpoint}")
+        # Mock other requests if needed
+        return {"data": {}}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/api/client.py
+<DOCUMENT>
+import os
+import requests
+from dotenv import load_dotenv
+from keyring import set_password, get_password
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+from src.schemas.schemas import (
+    AnalyticsSummary, CardCreate, CardResponse, CardUpdate,
+    LoanApply, LoanPaymentCreate, LoanPaymentResponse, LoanResponse,
+    LoanTypeResponse, LoginResponse, PaginatedResponse, TokenRefresh,
+    TransferCreate, TransferResponse, UserCreate, UserLogin,
+    UserpasswordUpdate, UserResponse, UserUpdate,
+)
+from src.utils.logger import setup_logger
+
+class APIClient:
+    def __init__(self):
+        load_dotenv()
+        self.base_url = os.getenv("API_BASE_URL", "https://aut-bank-backend.up.railway.app")
+        self.logger = setup_logger()
+        self.session = requests.Session()
+        self.access_token = get_password("BankingApp", "access_token")
+        self.refresh_token = get_password("BankingApp", "refresh_token")
+
+        self.skip_auth_routes = [
+            "/api/v1/users/check_uniqueness",
+            "/api/v1/users/send_verification",
+            "/api/v1/users/register",
+            "/api/v1/users/login",
+            "/api/v1/users/refresh",
+        ]
+
+    def set_tokens(self, access_token: str, refresh_token: str):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        set_password("BankingApp", "access_token", access_token)
+        set_password("BankingApp", "refresh_token", refresh_token)
+
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[BaseModel] = None,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        url = f"{self.base_url}{endpoint}"
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        if endpoint not in self.skip_auth_routes and self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+
+        json_payload = json_body or (data.dict(exclude_unset=True) if data else None)
+
+        # Terminal and logger debug log
+        log_message = f"\n📤 SENDING REQUEST 📤\n" \
+                      f"➡️ Method: {method.upper()}\n" \
+                      f"➡️ URL: {url}\n" \
+                      f"➡️ Headers: {headers}\n" \
+                      f"➡️ Params: {params}\n" \
+                      f"➡️ Body: {json_payload}\n"
+        print(log_message)
+        self.logger.debug(log_message)
+
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                json=json_payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            self.logger.error(f"API request failed: {method} {endpoint} - {str(e)}")
+            if e.response is not None:
+                self.logger.error(f"Response Body: {e.response.text}")
+            raise Exception(f"API request failed: {str(e)}")
+
+    # Authentication
+    def login(self, login_data: UserLogin) -> LoginResponse:
+        # Ensure you send the correct field names as per the API specs
+        response = self._request("POST", "/api/v1/users/login", data=login_data)
+        data = response["data"]
+        self.set_tokens(data["access_token"], data["refresh_token"])
+        return LoginResponse(**data)
+
+
+    def register(self, user_data: UserCreate) -> UserResponse:
+        response = self._request("POST", "/api/v1/users/register", data=user_data)
+        return UserResponse(**response["data"])
+
+    def refresh_token(self) -> Dict:
+        data = TokenRefresh(token=self.refresh_token)
+        response = self._request("POST", "/api/v1/users/refresh", data=data)
+        new_tokens = response["data"]
+        self.set_tokens(new_tokens["access_token"], new_tokens["refresh_token"])
+        return new_tokens
+
+    # Profile Management
+    def get_profile(self) -> UserResponse:
+        response = self._request("GET", "/api/v1/users/me")
+        return UserResponse(**response["data"])
+
+    def update_profile(self, update_data: UserUpdate) -> UserResponse:
+        response = self._request("PUT", "/api/v1/users/me", data=update_data)
+        return UserResponse(**response["data"])
+
+    def update_password(self, password_data: UserpasswordUpdate) -> Dict:
+        return self._request("PUT", "/api/v1/users/me/password", data=password_data)
+
+    # Transactions
+    def get_transactions(self, page: int = 1, per_page: int = 10, **filters) -> PaginatedResponse:
+        params = {"page": page, "per_page": per_page, **filters}
+        response = self._request("GET", "/api/v1/users/transactions", params=params)
+        return PaginatedResponse(**response)
+
+    def export_transactions(self, **filters) -> bytes:
+        params = filters
+        url = f"{self.base_url}/api/v1/users/transactions/export"
+        headers = {
+            "Accept": "application/json",
+        }
+        if self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+
+        response = self.session.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.content
+
+    # Transfers
+    def create_transfer(self, transfer_data: TransferCreate) -> TransferResponse:
+        response = self._request("POST", "/api/v1/users/transfer", data=transfer_data)
+        return TransferResponse(**response["data"])
+
+    # Cards
+    def get_cards(self, page=1, per_page=10, sort_by="CardID", order="asc") -> PaginatedResponse:
+        params = {"page": page, "per_page": per_page, "sort_by": sort_by, "order": order}
+        response = self._request("GET", "/api/v1/users/cards", params=params)
+        return PaginatedResponse(
+            items=[CardResponse(**item) for item in response["items"]],
+            **response
+        )
+
+    def create_card(self, card_data: CardCreate) -> CardResponse:
+        response = self._request("POST", "/api/v1/users/cards", data=card_data)
+        return CardResponse(**response["data"])
+
+    def update_card(self, card_id: int, update_data: CardUpdate) -> CardResponse:
+        response = self._request("PUT", f"/api/v1/users/cards/{card_id}", data=update_data)
+        return CardResponse(**response["data"])
+
+    def delete_card(self, card_id: int) -> Dict:
+        return self._request("DELETE", f"/api/v1/users/cards/{card_id}")
+
+    # Loans
+    def apply_loan(self, loan_data: LoanApply) -> LoanResponse:
+        response = self._request("POST", "/api/v1/users/loans/apply", data=loan_data)
+        return LoanResponse(**response["data"])
+
+    def get_loan_types(self) -> List[LoanTypeResponse]:
+        response = self._request("GET", "/api/v1/users/loans/types")
+        return [LoanTypeResponse(**item) for item in response["data"]]
+
+    def make_loan_payment(self, payment_data: LoanPaymentCreate) -> LoanPaymentResponse:
+        response = self._request("POST", "/api/v1/users/loans/payments", data=payment_data)
+        return LoanPaymentResponse(**response["data"])
+
+    def get_loans(self, page=1, per_page=10, status=None, sort_by="CreatedAt", order="desc") -> PaginatedResponse:
+        params = {"page": page, "per_page": per_page, "status": status, "sort_by": sort_by, "order": order}
+        response = self._request("GET", "/api/v1/users/loans", params=params)
+        return PaginatedResponse(
+            items=[LoanResponse(**item) for item in response["items"]],
+            **response
+        )
+
+    def get_loan_payments(self, loan_id: int, page=1, per_page=10) -> PaginatedResponse:
+        params = {"page": page, "per_page": per_page}
+        response = self._request("GET", f"/api/v1/users/loans/{loan_id}/payments", params=params)
+        return PaginatedResponse(
+            items=[LoanPaymentResponse(**item) for item in response["items"]],
+            **response
+        )
+
+    # Analytics
+    def get_analytics_summary(self) -> AnalyticsSummary:
+        response = self._request("GET", "/api/v1/users/analytics/summary")
+        return AnalyticsSummary(**response["data"])
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/context/user_context.py
+<DOCUMENT>
+class UserContext:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.user = None
+            cls._instance.token = None
+        return cls._instance
+    
+    def set_user(self, user_data, token):
+        self.user = user_data
+        self.token = token
+    
+    def get_user(self):
+        return self.user
+    
+    def get_token(self):
+        return self.token
+    
+    def clear(self):
+        self.user = None
+        self.token = None
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/schemas/schemas.py
+<DOCUMENT>
+from datetime import date
+from pydantic import BaseModel, EmailStr, constr, validator
+
+class UserLogin(BaseModel):
+    login_id: str
+    Password: constr(min_length=8)
+
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: constr(min_length=8)
+    first_name: str
+    last_name: str
+    DateOfBirth: date
+    CNIC: str  # Changed from constr with pattern to str
+
+    @validator('CNIC')
+    def validate_cnic(cls, v):
+        import re
+        if not re.match(r'^\d{5}-\d{7}-\d{1}$', v):
+            raise ValueError('CNIC must be in format: XXXXX-XXXXXXX-X')
+        return v
+
+    @validator('password')
+    def password_strength(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError('password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('password must contain at least one number')
+        return v
+
+class UserUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+
+class UserpasswordUpdate(BaseModel):
+    current_password: str
+    new_password: constr(min_length=8)
+
+    @validator('new_password')
+    def password_strength(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError('password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('password must contain at least one number')
+        return v
+
+class TokenRefresh(BaseModel):
+    token: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    first_name: str
+    last_name: str
+    is_active: bool
+    created_at: date
+
+class PaginatedResponse(BaseModel):
+    items: list
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+class TransferCreate(BaseModel):
+    recipient_account: str
+    amount: float
+    description: str | None = None
+
+class TransferResponse(BaseModel):
+    id: int
+    sender_account: str
+    recipient_account: str
+    amount: float
+    description: str | None = None
+    status: str
+    created_at: date
+
+class CardCreate(BaseModel):
+    card_type: str
+    currency: str
+
+class CardUpdate(BaseModel):
+    is_active: bool | None = None
+    daily_limit: float | None = None
+
+class CardResponse(BaseModel):
+    id: int
+    card_number: str
+    card_type: str
+    currency: str
+    is_active: bool
+    daily_limit: float
+    created_at: date
+
+class LoanApply(BaseModel):
+    loan_type_id: int
+    amount: float
+    term_months: int
+    purpose: str
+
+class LoanResponse(BaseModel):
+    id: int
+    loan_type: str
+    amount: float
+    term_months: int
+    interest_rate: float
+    monthly_payment: float
+    total_payment: float
+    remaining_balance: float
+    status: str
+    created_at: date
+
+class LoanTypeResponse(BaseModel):
+    id: int
+    name: str
+    min_amount: float
+    max_amount: float
+    min_term: int
+    max_term: int
+    interest_rate: float
+    requirements: list[str]
+
+class LoanPaymentCreate(BaseModel):
+    loan_id: int
+    amount: float
+
+class LoanPaymentResponse(BaseModel):
+    id: int
+    loan_id: int
+    amount: float
+    payment_date: date
+    status: str
+
+class AnalyticsSummary(BaseModel):
+    total_balance: float
+    total_income: float
+    total_expenses: float
+    loan_summary: dict
+    recent_transactions: list
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/services/api.py
+<DOCUMENT>
+import requests
+
+class APIClient:
+    def __init__(self, base_url="https://aut-bank-backend.up.railway.app"):
+        self.base_url = base_url
+        self.session = requests.Session()
+        self.token = None
+
+    def set_token(self, token):
+        self.token = token
+        if token:
+            self.session.headers.update({"Authorization": f"Bearer {token}"})
+        else:
+            self.session.headers.pop("Authorization", None)
+
+    def signup(self, user_data):
+        response = self.session.post(f"{self.base_url}/auth/signup", json=user_data)
+        return response.json()
+
+    def login(self, username, password):
+        response = self.session.post(
+            f"{self.base_url}/auth/login",
+            json={"username": username, "password": password}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            self.set_token(data.get("token"))
+        return response.json()
+
+    def logout(self):
+        self.set_token(None)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/services/transaction_service.py
+<DOCUMENT>
+from src.api.client import APIClient
+
+class TransactionService:
+    def __init__(self):
+        self.client = APIClient()
+
+    async def get_transactions(self):
+        # Placeholder: Fetch transactions from API
+        return {"transactions": []}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/services/user_service.py
+<DOCUMENT>
+from typing import Dict, Optional
+
+class UserService:
+    def __init__(self):
+        # Temporary mock data - replace with actual database/API calls
+        self.mock_user = {
+            "id": "12345",
+            "username": "demo@example.com",
+            "full_name": "Demo User",
+            "balance": 5000.00,
+            "account_number": "1234567890",
+            "account_type": "Savings",
+            "last_login": "2024-01-20 10:30:00"
+        }
+
+    def getUserDetails(self, user_id: str = "12345") -> Dict:
+        """Get user details including account information"""
+        return self.mock_user
+
+    def updateUserDetails(self, user_id: str, details: Dict) -> bool:
+        """Update user details"""
+        self.mock_user.update(details)
+        return True
+
+    def validateCredentials(self, username: str, password: str) -> Optional[str]:
+        """Validate user credentials and return user_id if valid"""
+        # Mock validation - replace with actual authentication
+        if username == "demo@example.com" and password == "Demo123!":
+            return "12345"
+        return None
+
+# Create a singleton instance
+user_service = UserService()
+
+# Export functions for easy access
+def getUserDetails(user_id: str = "12345") -> Dict:
+    return user_service.getUserDetails(user_id)
+
+def updateUserDetails(user_id: str, details: Dict) -> bool:
+    return user_service.updateUserDetails(user_id, details)
+
+def validateCredentials(username: str, password: str) -> Optional[str]:
+    return user_service.validateCredentials(username, password)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/dashboard.qss
+<DOCUMENT>
+DashboardScreen {
+    background-color: #FFFFFF;
+}
+
+QLabel#title {
+    color: #2E7D32;
+    font-size: 36px;
+    font-weight: bold;
+}
+
+QWidget#contentContainer {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    border: 1px solid #E8F5E9;
+}
+
+QLabel {
+    color: #333333;
+    font-size: 16px;
+}
+
+QPushButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton:hover {
+    background-color: #4CAF50;
+}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/global.qss
+<DOCUMENT>
+QWidget {
+    background-color: @background;
+    color: @foreground;
+    font-family: 'Roboto', sans-serif;
+}
+
+QLabel#bank_name {
+    font-size: 32px;
+    font-weight: bold;
+    color: @primary;
+}
+
+QLabel#tagline {
+    font-size: 18px;
+    color: @muted-foreground;
+}
+
+QWidget#card, QWidget#dashboard_card {
+    background-color: @card;
+    border-radius: @radius;
+    padding: 20px;
+    border: 1px solid @border;
+}
+
+QLabel#title {
+    font-size: 24px;
+    font-weight: bold;
+    color: @card-foreground;
+}
+
+QLineEdit {
+    background-color: @input;
+    border: 1px solid @border;
+    border-radius: 5px;
+    padding: 10px;
+    color: @foreground;
+    font-size: 14px;
+}
+
+QLineEdit:focus {
+    border-color: @ring;
+    outline: none;
+}
+
+QPushButton {
+    background-color: @primary;
+    color: @primary-foreground;
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: @secondary;
+    color: @secondary-foreground;
+}
+
+QPushButton#link {
+    background: none;
+    color: @accent-foreground;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+QPushButton#link:hover {
+    color: @primary;
+}
+
+QLabel#error {
+    color: @destructive;
+    font-size: 12px;
+}
+
+QCheckBox {
+    color: @foreground;
+    font-size: 14px;
+}
+
+QWidget#sidebar {
+    background-color: @sidebar;
+    border-right: 1px solid @sidebar-border;
+}
+
+QPushButton#sidebar-button {
+    background-color: @sidebar-primary;
+    color: @sidebar-primary-foreground;
+    border: none;
+    padding: 10px;
+    font-size: 14px;
+}
+
+QPushButton#sidebar-button:hover {
+    background-color: @sidebar-accent;
+    color: @sidebar-accent-foreground;
+}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/global_styles.py
+<DOCUMENT>
+from dataclasses import dataclass, field
+from typing import Dict
+
+@dataclass
+class ThemeColors:
+    primary: str = "#1E3D59"
+    secondary: str = "#FF6E40"
+    background: str = "#FFFFFF"
+    surface: str = "#F5F5F5"
+    text_primary: str = "#333333"
+    text_secondary: str = "#666666"
+    error: str = "#DC3545"
+    success: str = "#28A745"
+    warning: str = "#FFC107"
+    info: str = "#17A2B8"
+
+@dataclass
+class Dimensions:
+    spacing_xs: int = 4
+    spacing_sm: int = 8
+    spacing_md: int = 16
+    spacing_lg: int = 24
+    spacing_xl: int = 32
+    border_radius: int = 8
+    icon_size_sm: int = 16
+    icon_size_md: int = 24
+    icon_size_lg: int = 32
+
+@dataclass
+class Typography:
+    font_family: str = "Segoe UI"
+    font_size_sm: int = 12
+    font_size_md: int = 14
+    font_size_lg: int = 16
+    font_size_xl: int = 20
+    font_weight_normal: int = 400
+    font_weight_bold: int = 700
+
+@dataclass
+class GlobalStyles:
+    colors: ThemeColors = field(default_factory=ThemeColors)
+    dimensions: Dimensions = field(default_factory=Dimensions)
+    typography: Typography = field(default_factory=Typography)
+
+    def get_stylesheet(self) -> str:
+        return f"""
+            QWidget {{
+                font-family: {self.typography.font_family};
+                font-size: {self.typography.font_size_md}px;
+            }}
+
+            QPushButton {{
+                background-color: {self.colors.primary};
+                color: white;
+                border: none;
+                border-radius: {self.dimensions.border_radius}px;
+                padding: {self.dimensions.spacing_sm}px {self.dimensions.spacing_md}px;
+                font-weight: {self.typography.font_weight_bold};
+            }}
+
+            QPushButton:hover {{
+                background-color: {self.colors.secondary};
+            }}
+
+            QLineEdit {{
+                padding: {self.dimensions.spacing_sm}px;
+                border: 1px solid {self.colors.text_secondary};
+                border-radius: {self.dimensions.border_radius}px;
+                background-color: {self.colors.surface};
+            }}
+
+            QLabel {{
+                color: {self.colors.text_primary};
+            }}
+        """
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/login.qss
+<DOCUMENT>
+LoginScreen {
+    background-color: #FFFFFF;
+}
+
+QFrame#header {
+    background-color: #FFFFFF;
+}
+
+QLabel#bankName {
+    font-size: 24px;
+    font-weight: bold;
+    color: #FFFFFF;
+    background-color: #2E7D32;
+    border-radius: 100px;
+    text-align: center;
+    padding: 20px;
+}
+
+QFrame#content {
+    background-color: #FFFFFF;
+    padding: 40px;
+}
+
+QFrame#formFrame {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    min-width: 400px;
+    border: 1px solid #E8F5E9;
+}
+
+QLineEdit {
+    padding: 12px;
+    border: 1px solid #E8F5E9;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #FFFFFF;
+}
+
+QLineEdit:focus {
+    border: 1px solid #4CAF50;
+}
+
+QPushButton#rememberCheck {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    text-align: left;
+    font-size: 14px;
+}
+
+QPushButton#rememberCheck:checked {
+    color: #4CAF50;
+}
+
+QPushButton#forgotpassword {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    text-align: right;
+    font-size: 14px;
+}
+
+QPushButton#forgotpassword:hover {
+    color: #4CAF50;
+}
+
+QPushButton#loginButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton#loginButton:hover {
+    background-color: #4CAF50;
+}
+
+QLabel#signupText {
+    color: #666;
+    font-size: 14px;
+}
+
+QPushButton#signupButton {
+    background-color: transparent;
+    color: #2E7D32;
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton#signupButton:hover {
+    color: #4CAF50;
+}
+
+QLabel#errorLabel {
+    color: #F44336;
+    font-size: 12px;
+    padding: 5px;
+}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/signup.qss
+<DOCUMENT>
+SignupScreen {
+    background-color: #FFFFFF;
+}
+
+QLabel#title {
+    color: #2E7D32;
+    font-size: 36px;
+    font-weight: bold;
+}
+
+QWidget#formContainer {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 30px;
+    border: 1px solid #E8F5E9;
+}
+
+QLineEdit {
+    padding: 12px;
+    border: 1px solid #E8F5E9;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #FFFFFF;
+}
+
+QLineEdit:focus {
+    border: 1px solid #4CAF50;
+}
+
+QPushButton {
+    background-color: #2E7D32;
+    color: #FFFFFF;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+}
+
+QPushButton:hover {
+    background-color: #4CAF50;
+}
+
+QLabel#errorLabel {
+    color: #F44336;
+    font-size: 12px;
+}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/splash.qss
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
+
+class SplashScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(1000, 700)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(40)
+
+        # Bank name
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        layout.addWidget(bank_name)
+
+        # Tagline
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        layout.addWidget(tagline)
+
+        # Welcome message with fade-in animation
+        welcome_message = QLabel("Welcome to AUT Finance Bank...")
+        welcome_message.setObjectName("welcome_message")
+        layout.addWidget(welcome_message)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+        # Start animation
+        self.start_animation(welcome_message)
+
+    def start_animation(self, widget):
+        anim = QPropertyAnimation(widget, b"windowOpacity")
+        anim.setDuration(800)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
+
+        # Transition to login screen after animation
+        QTimer.singleShot(3000, self.finish_splash)
+
+    def finish_splash(self):
+        self.parent().switch_screen('Login')
+        self.close()
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/styles/user_check.qss
+<DOCUMENT>
+UserCheckScreen { background-color: var(--card); }
+
+QLabel { color: var(--card-foreground); font-size: 24px; font-weight: bold; }
+
+QPushButton { background-color: var(--primary); color: var(--primary-foreground); border-radius: var(--radius); padding: 10px 20px; font-size: 16px; }
+
+QPushButton:hover { background-color: var(--ring); }
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/themes/themes.json
+<DOCUMENT>
+{
+    "themes": [
+      {
+        "name": "Dark",
+        "id": "dark",
+        "variables": {
+          "radius": "10px",
+          "background": "#1a1b26",
+          "foreground": "#c0caf5",
+          "card": "#24283b",
+          "card-foreground": "#c0caf5",
+          "popover": "#24283b",
+          "popover-foreground": "#c0caf5",
+          "primary": "#2dd4bf",
+          "primary-foreground": "#24283b",
+          "secondary": "#64748b",
+          "secondary-foreground": "#c0caf5",
+          "muted": "#414868",
+          "muted-foreground": "#a9b1d6",
+          "accent": "#414868",
+          "accent-foreground": "#c0caf5",
+          "destructive": "#f7768e",
+          "border": "rgba(255, 255, 255, 0.1)",
+          "input": "rgba(255, 255, 255, 0.15)",
+          "ring": "#2dd4bf",
+          "chart-1": "#7aa2f7",
+          "chart-2": "#73daca",
+          "chart-3": "#e0af68",
+          "chart-4": "#bb9af7",
+          "chart-5": "#f7768e",
+          "sidebar": "#24283b",
+          "sidebar-foreground": "#c0caf5",
+          "sidebar-primary": "#2dd4bf",
+          "sidebar-primary-foreground": "#24283b",
+          "sidebar-accent": "#414868",
+          "sidebar-accent-foreground": "#c0caf5",
+          "sidebar-border": "rgba(255, 255, 255, 0.1)",
+          "sidebar-ring": "#2dd4bf",
+          "skeleton-base": "rgba(65, 72, 104, 0.8)",
+          "skeleton-highlight": "rgba(65, 72, 104, 0.9)"
+        }
+      },
+      {
+        "name": "Neon Void",
+        "id": "neon",
+        "variables": {
+          "radius": "10px",
+          "background": "#1e1e2e",
+          "foreground": "#a6e3a1",
+          "card": "#27293d",
+          "card-foreground": "#a6e3a1",
+          "popover": "#27293d",
+          "popover-foreground": "#a6e3a1",
+          "primary": "#f5c2e7",
+          "primary-foreground": "#27293d",
+          "secondary": "#585b70",
+          "secondary-foreground": "#a6e3a1",
+          "muted": "#3b3e5b",
+          "muted-foreground": "#94e2d5",
+          "accent": "#3b3e5b",
+          "accent-foreground": "#a6e3a1",
+          "destructive": "#f7768e",
+          "border": "rgba(65, 66, 94, 0.3)",
+          "input": "rgba(65, 66, 94, 0.3)",
+          "ring": "#f5c2e7",
+          "chart-1": "#cba6f7",
+          "chart-2": "#f5c2e7",
+          "chart-3": "#f38ba8",
+          "chart-4": "#a6e3a1",
+          "chart-5": "#89dceb",
+          "sidebar": "#212135",
+          "sidebar-foreground": "#a6e3a1",
+          "sidebar-primary": "#f5c2e7",
+          "sidebar-primary-foreground": "#27293d",
+          "sidebar-accent": "#353754",
+          "sidebar-accent-foreground": "#a6e3a1",
+          "sidebar-border": "rgba(65, 66, 94, 0.3)",
+          "sidebar-ring": "#f5c2e7",
+          "skeleton-base": "rgba(59, 62, 91, 0.8)",
+          "skeleton-highlight": "rgba(59, 62, 91, 0.9)"
+        }
+      },
+      {
+        "name": "Arctic Glow",
+        "id": "arctic",
+        "variables": {
+          "radius": "10px",
+          "background": "#   "#e5e9f0",
+          "foreground": "#3b4252",
+          "card": "#eceff4",
+          "card-foreground": "#3b4252",
+          "popover": "#eceff4",
+          "popover-foreground": "#3b4252",
+          "primary": "#88c0d0",
+          "primary-foreground": "#eceff4",
+          "secondary": "#d8dee9",
+          "secondary-foreground": "#3b4252",
+          "muted": "#e5e9f0",
+          "muted-foreground": "#81a1c1",
+          "accent": "#e5e9f0",
+          "accent-foreground": "#3b4252",
+          "destructive": "#f7768e",
+          "border": "rgba(216, 222, 233, 0.3)",
+          "input": "rgba(216, 222, 233, 0.3)",
+          "ring": "#88c0d0",
+          "chart-1": "#5e81ac",
+          "chart-2": "#81a1c1",
+          "chart-3": "#88c0d0",
+          "chart-4": "#8fbcbb",
+          "chart-5": "#d8dee9",
+          "sidebar": "#e5e9f0",
+          "sidebar-foreground": "#3b4252",
+          "sidebar-primary": "#88c0d0",
+          "sidebar-primary-foreground": "#eceff4",
+          "sidebar-accent": "#d8dee9",
+          "sidebar-accent-foreground": "#3b4252",
+          "sidebar-border": "rgba(216, 222, 233, 0.3)",
+          "sidebar-ring": "#88c0d0",
+          "skeleton-base": "rgba(229, 233, 240, 0.7)",
+          "skeleton-highlight": "rgba(229, 233, 240, 0.8)"
+        }
+      },
+      {
+        "name": "Synthwave",
+        "id": "synthwave",
+        "variables": {
+          "radius": "10px",
+          "background": "#2a2139",
+          "foreground": "#f8f8f2",
+          "card": "#3b2f4d",
+          "card-foreground": "#f8f8f2",
+          "popover": "#3b2f4d",
+          "popover-foreground": "#f8f8f2",
+          "primary": "#ff79c6",
+          "primary-foreground": "#3b2f4d",
+          "secondary": "#bd93f9",
+          "secondary-foreground": "#f8f8f2",
+          "muted": "#44475a",
+          "muted-foreground": "#6272a4",
+          "accent": "#44475a",
+          "accent-foreground": "#f8f8f2",
+          "destructive": "#f7768e",
+          "border": "rgba(68, 71, 90, 0.3)",
+          "input": "rgba(68, 71, 90, 0.3)",
+          "ring": "#ff79c6",
+          "chart-1": "#ff79c6",
+          "chart-2": "#bd93f9",
+          "chart-3": "#ff5555",
+          "chart-4": "#50fa7b",
+          "chart-5": "#f1fa8c",
+          "sidebar": "#2a2139",
+          "sidebar-foreground": "#f8f8f2",
+          "sidebar-primary": "#ff79c6",
+          "sidebar-primary-foreground": "#3b2f4d",
+          "sidebar-accent": "#44475a",
+          "sidebar-accent-foreground": "#f8f8f2",
+          "sidebar-border": "rgba(68, 71, 90, 0.3)",
+          "sidebar-ring": "#ff79c6",
+          "skeleton-base": "rgba(68, 71, 90, 0.8)",
+          "skeleton-highlight": "rgba(68, 71, 90, 0.9)"
+        }
+      },
+      {
+        "name": "Molten Ember",
+        "id": "ember",
+        "variables": {
+          "radius": "10px",
+          "background": "#3c2f2f",
+          "foreground": "#f4f4f4",
+          "card": "#4b3b3b",
+          "card-foreground": "#f4f4f4",
+          "popover": "#4b3b3b",
+          "popover-foreground": "#f4f4f4",
+          "primary": "#e06c75",
+          "primary-foreground": "#4b3b3b",
+          "secondary": "#d19a66",
+          "secondary-foreground": "#f4f4f4",
+          "muted": "#5c4b4b",
+          "muted-foreground": "#d08770",
+          "accent": "#5c4b4b",
+          "accent-foreground": "#f4f4f4",
+          "destructive": "#f7768e",
+          "border": "rgba(92, 75, 75, 0.3)",
+          "input": "rgba(92, 75, 75, 0.3)",
+          "ring": "#e06c75",
+          "chart-1": "#d19a66",
+          "chart-2": "#e06c75",
+          "chart-3": "#d08770",
+          "chart-4": "#cc6666",
+          "chart-5": "#b16286",
+          "sidebar": "#3c2f2f",
+          "sidebar-foreground": "#f4f4f4",
+          "sidebar-primary": "#e06c75",
+          "sidebar-primary-foreground": "#4b3b3b",
+          "sidebar-accent": "#5c4b4b",
+          "sidebar-accent-foreground": "#f4f4f4",
+          "sidebar-border": "rgba(92, 75, 75, 0.3)",
+          "sidebar-ring": "#e06c75",
+          "skeleton-base": "rgba(92, 75, 75, 0.8)",
+          "skeleton-highlight": "rgba(92, 75, 75, 0.9)"
+        }
+      },
+      {
+        "name": "Verdant Oasis",
+        "id": "oasis",
+        "variables": {
+          "radius": "10px",
+          "background": "#d1e8d5",
+          "foreground": "#355e3b",
+          "card": "#e0f0e3",
+          "card-foreground": "#355e3b",
+          "popover": "#e0f0e3",
+          "popover-foreground": "#355e3b",
+          "primary": "#4caf50",
+          "primary-foreground": "#e0f0e3",
+          "secondary": "#a5d6a7",
+          "secondary-foreground": "#355e3b",
+          "muted": "#c8e6c9",
+          "muted-foreground": "#66bb6a",
+          "accent": "#c8e6c9",
+          "accent-foreground": "#355e3b",
+          "destructive": "#f7768e",
+          "border": "rgba(200, 230, 201, 0.3)",
+          "input": "rgba(200, 230, 201, 0.3)",
+          "ring": "#4caf50",
+          "chart-1": "#4caf50",
+          "chart-2": "#66bb6a",
+          "chart-3": "#81c784",
+          "chart-4": "#a5d6a7",
+          "chart-5": "#c8e6c9",
+          "sidebar": "#d1e8d5",
+          "sidebar-foreground": "#355e3b",
+          "sidebar-primary": "#4caf50",
+          "sidebar-primary-foreground": "#e0f0e3",
+          "sidebar-accent": "#c8e6c9",
+          "sidebar-accent-foreground": "#355e3b",
+          "sidebar-border": "rgba(200, 230, 201, 0.3)",
+          "sidebar-ring": "#4caf50",
+          "skeleton-base": "rgba(200, 230, 201, 0.7)",
+          "skeleton-highlight": "rgba(200, 230, 201, 0.8)"
+        }
+      }
+    ]
+  }
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/themes/theme_loader.py
+<DOCUMENT>
+import json
+import os
+from PySide6.QtWidgets import QApplication
+
+class ThemeLoader:
+    def __init__(self, themes_file="src/themes/themes.json"):
+        self.themes_file = themes_file
+        self.themes = self.load_themes()
+        self.current_theme = "dark"  # Default theme
+
+    def load_themes(self):
+        try:
+            with open(self.themes_file, 'r') as f:
+                return json.load(f).get("themes", [])
+        except Exception as e:
+            print(f"Error loading themes: {e}")
+            return []
+
+    def get_theme(self, theme_id):
+        for theme in self.themes:
+            if theme["id"] == theme_id:
+                return theme
+        return self.themes[0] if self.themes else {}
+
+    def apply_theme(self, app: QApplication, theme_id: str = None):
+        if theme_id:
+            self.current_theme = theme_id
+        theme = self.get_theme(self.current_theme)
+        variables = theme.get("variables", {})
+
+        # Load global stylesheet and replace variables
+        with open("src/styles/global.qss", "r") as f:
+            stylesheet = f.read()
+
+        for var, value in variables.items():
+            stylesheet = stylesheet.replace(f"@{var}", value)
+
+        app.setStyleSheet(stylesheet)
+
+    def switch_theme(self, theme_id: str, app: QApplication):
+        self.apply_theme(app, theme_id)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/main.py
+<DOCUMENT>
+import os
+import sys
+from pathlib import Path
+
+# Add the project root directory to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# Now import the application modules
+from PySide6.QtWidgets import QApplication
+from src.ui.navigation.navigation_manager import NavigationManager
+from src.themes.theme_loader import ThemeLoader
+from src.utils.config import load_config
+
+def main():
+    app = QApplication(sys.argv)
+    
+    # Load environment variables
+    config = load_config()
+    
+    # Load theme
+    theme_loader = ThemeLoader()
+    theme = theme_loader.load_theme(config.get("DEFAULT_THEME", "dark"))
+    with open("src/styles/global.qss", "r") as f:
+        app.setStyleSheet(f.read())
+    
+    # Initialize navigation
+    nav_manager = NavigationManager()
+    nav_manager.show()
+    
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/main_window.py
+<DOCUMENT>
+from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from PySide6.QtCore import Qt
+from .screens.splash import SplashScreen
+from .screens.login import LoginScreen
+from .screens.dashboard import DashboardScreen
+from .screens.signup import SignupScreen
+from .navigation.navigation_manager import NavigationManager
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Banking Desktop App")
+        self.setMinimumSize(1200, 800)
+        
+        # Create stacked widget for screens
+        self.stacked_widget = QStackedWidget()
+        self.setCentralWidget(self.stacked_widget)
+        
+        # Initialize screens
+        self.splash_screen = SplashScreen()
+        self.login_screen = LoginScreen()
+        self.signup_screen = SignupScreen()
+        self.dashboard_screen = DashboardScreen()
+        
+        # Add screens to stacked widget
+        self.stacked_widget.addWidget(self.splash_screen)
+        self.stacked_widget.addWidget(self.login_screen)
+        self.stacked_widget.addWidget(self.signup_screen)
+        self.stacked_widget.addWidget(self.dashboard_screen)
+        
+        # Initialize navigation manager
+        self.navigation_manager = NavigationManager(self.stacked_widget)
+        
+        # Connect signals
+        self.splash_screen.finished.connect(self.show_login)
+        self.login_screen.signup_requested.connect(self.show_signup)
+        self.login_screen.login_successful.connect(self.show_dashboard)
+        self.signup_screen.back_to_login.connect(self.show_login)
+        self.signup_screen.signup_successful.connect(self.show_dashboard)
+        
+        # Show splash screen initially
+        self.show_splash()
+    
+    def show_splash(self):
+        self.stacked_widget.setCurrentWidget(self.splash_screen)
+        self.splash_screen.start_animation()
+    
+    def show_login(self):
+        self.stacked_widget.setCurrentWidget(self.login_screen)
+    
+    def show_signup(self):
+        self.stacked_widget.setCurrentWidget(self.signup_screen)
+    
+    def show_dashboard(self):
+        self.stacked_widget.setCurrentWidget(self.dashboard_screen)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/navigation/navigation_manager.py
+<DOCUMENT>
+import sys
+from PySide6.QtWidgets import QMainWindow, QStackedWidget, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QFrame
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt, QSize
+from src.ui.screens.splash import SplashScreen
+from src.ui.screens.login import LoginScreen
+from src.ui.screens.signup import SignupScreen
+from src.ui.screens.dashboard import DashboardScreen
+from src.ui.screens.transfer import TransferScreen
+from src.utils.theme_loader import ThemeLoader
+
+class NavigationManager(QMainWindow):
+    def __init__(self, app: QApplication):
+        super().__init__()
+        self.app = app
+        self.setWindowTitle("AUT Finance Bank Desktop")
+        self.setMinimumSize(800, 600)  # Set minimum window size
+        self.theme_loader = ThemeLoader()
+        self.init_ui()
+        self.apply_theme()
+
+    def init_ui(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+
+        # Sidebar
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(200)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setAlignment(Qt.AlignTop)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.nav_buttons = {
+            'Dashboard': QPushButton('Dashboard'),
+            'Login': QPushButton('Login'),
+            'Signup': QPushButton('Signup'),
+            'Transfer': QPushButton('Send Money'),
+            'Transactions': QPushButton('Transactions'),
+            'Cards': QPushButton('Cards'),
+            'Loans': QPushButton('Loans'),
+        }
+
+        for name, button in self.nav_buttons.items():
+            button.setObjectName("sidebar-button")
+            button.clicked.connect(lambda checked, n=name: self.switch_screen(n))
+            sidebar_layout.addWidget(button)
+
+        self.theme_selector = QComboBox()
+        self.theme_selector.addItems([theme["name"] for theme in self.theme_loader.themes])
+        self.theme_selector.currentTextChanged.connect(self.change_theme)
+        sidebar_layout.addWidget(self.theme_selector)
+        sidebar_layout.addStretch()
+
+        main_layout.addWidget(sidebar)
+
+        # Content area
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        self.stack = QStackedWidget()
+        content_layout.addWidget(self.stack)
+        main_layout.addWidget(content_widget)
+
+        self.screens = {
+            'Dashboard': DashboardScreen(self),
+            'Login': LoginScreen(self),
+            'Signup': SignupScreen(self),
+            'Transfer': TransferScreen(self),
+            'Transactions': QWidget(self),  # Placeholder
+            'Cards': QWidget(self),        # Placeholder
+            'Loans': QWidget(self),        # Placeholder
+        }
+
+        for screen in self.screens.values():
+            self.stack.addWidget(screen)
+
+        self.show_splash()
+
+    def apply_theme(self):
+        self.theme_loader.apply_theme(self.app)
+
+    def change_theme(self, theme_name):
+        theme_id = next(theme["id"] for theme in self.theme_loader.themes if theme["name"] == theme_name)
+        self.theme_loader.switch_theme(theme_id, self.app)
+
+    def show_splash(self):
+        self.splash = SplashScreen()
+        self.splash.finished.connect(self.on_splash_finished)
+        self.splash.show()
+
+    def on_splash_finished(self):
+        self.switch_screen('Login')
+        self.show()
+
+    def switch_screen(self, screen_name):
+        if screen_name in self.screens:
+            self.stack.setCurrentWidget(self.screens[screen_name])
+            self.show()
+
+    def resizeEvent(self, event):
+        """Handle window resize events"""
+        super().resizeEvent(event)
+        # Maintain minimum aspect ratio
+        size = event.size()
+        min_width = 800
+        min_height = 600
+        if size.width() < min_width or size.height() < min_height:
+            self.setMinimumSize(QSize(min_width, min_height))
+        
+        # Update content area size
+        content_width = size.width() - 200  # Subtract sidebar width
+        if content_width > 0:
+            self.stack.setFixedWidth(content_width)
+
+    def sizeHint(self):
+        """Provide default size hint"""
+        return QSize(1000, 700)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = NavigationManager(app)
+    sys.exit(app.exec())
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/dashboard.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QGridLayout
+from PySide6.QtCore import Qt
+from src.api.client import APIClient
+from src.context.user_context import UserContext
+
+class DashboardScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.api_client = APIClient()
+        self.user_context = UserContext()
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setAlignment(Qt.AlignTop)
+        main_layout.setSpacing(40)
+
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        bank_name.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(bank_name)
+
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        tagline.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(tagline)
+
+        balance_card = QWidget()
+        balance_card.setObjectName("dashboard_card")
+        balance_layout = QVBoxLayout(balance_card)
+        balance_layout.setSpacing(10)
+
+        balance_title = QLabel("Account Overview")
+        balance_title.setObjectName("title")
+        balance_layout.addWidget(balance_title)
+
+        self.balance_label = QLabel("Loading balance...")
+        self.balance_label.setObjectName("balance")
+        balance_layout.addWidget(self.balance_label)
+
+        self.analytics_label = QLabel("Loading analytics...")
+        self.analytics_label.setObjectName("balance")
+        balance_layout.addWidget(self.analytics_label)
+
+        main_layout.addWidget(balance_card)
+
+        services_card = QWidget()
+        services_card.setObjectName("dashboard_card")
+        services_layout = QGridLayout(services_card)
+        services_layout.setSpacing(20)
+
+        services = ["Send Money", "Deposit", "Withdraw", "Cards", "Transactions", "Loan"]
+        for i, service in enumerate(services):
+            btn = QPushButton(service)
+            btn.clicked.connect(lambda checked, s=service: self.handle_service(s))
+            services_layout.addWidget(btn, i // 3, i % 3)
+
+        main_layout.addWidget(services_card)
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+        self.fetch_user_data()
+
+    def fetch_user_data(self):
+        try:
+            user_data = self.api_client.get_profile()
+            analytics = self.api_client.get_analytics_summary()
+            self.balance_label.setText(f"Balance: ${user_data.Balance:.2f}")
+            self.analytics_label.setText(
+                f"Monthly Spending: ${analytics.monthly_spending:.2f} | "
+                f"Income: ${analytics.monthly_income:.2f} | "
+                f"Transactions: {analytics.transaction_count}"
+            )
+        except Exception as e:
+            self.balance_label.setText("Error loading data")
+            self.analytics_label.setText(str(e))
+
+    def handle_service(self, service):
+        screen_map = {
+            "Send Money": "Transfer",
+            "Cards": "Cards",
+            "Transactions": "Transactions",
+            "Loan": "Loans"
+        }
+        screen = screen_map.get(service, "Dashboard")
+        self.parent().switch_screen(screen)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/login.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QCheckBox
+from PySide6.QtCore import Qt, QPropertyAnimation
+from src.api.client import APIClient
+from src.schemas.schemas import UserLogin
+from src.context.user_context import UserContext
+
+class LoginScreen(QWidget):
+    def __init__(self, navigation_manager):
+        super().__init__()
+        self.navigation_manager = navigation_manager
+        self.api_client = APIClient()
+        self.user_context = UserContext()
+        self.animations = []
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setAlignment(Qt.AlignTop)
+        main_layout.setSpacing(40)
+
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        bank_name.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(bank_name)
+
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        tagline.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(tagline)
+
+        card = QWidget()
+        card.setObjectName("card")
+        card.setFixedWidth(450)
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(20)
+        card_layout.setContentsMargins(40, 40, 40, 40)
+
+        title = QLabel("Sign in to your account")
+        title.setObjectName("title")
+        title.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(title)
+
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Enter your username or email")
+        card_layout.addWidget(self.username_input)
+
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Enter your password")
+        self.password_input.setEchoMode(QLineEdit.Password)  # Fixed: Changed from lowercase 'password' to 'Password'
+        card_layout.addWidget(self.password_input)
+
+        terms_layout = QHBoxLayout()
+        terms_checkbox = QCheckBox(" Agree to terms and conditions")
+        terms_layout.addWidget(terms_checkbox)
+        card_layout.addLayout(terms_layout)
+
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("error")
+        self.error_label.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(self.error_label)
+
+        login_button = QPushButton("Log In")
+        login_button.clicked.connect(self.handle_login)
+        card_layout.addWidget(login_button)
+
+        links_layout = QHBoxLayout()
+        signup_link = QPushButton("Don't have an account? Sign Up")
+        signup_link.setObjectName("link")
+        signup_link.clicked.connect(lambda: self.navigation_manager.switch_screen('Signup'))
+        links_layout.addWidget(signup_link)
+        card_layout.addLayout(links_layout)
+
+        main_layout.addWidget(card, alignment=Qt.AlignCenter)
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+        self.start_animation(title)
+
+    def start_animation(self, widget):
+        anim = QPropertyAnimation(widget, b"windowOpacity")
+        anim.setDuration(800)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
+
+    def handle_login(self):
+        if not self.username_input.text() or not self.password_input.text():
+            self.error_label.setText("Please fill in all fields")
+            return
+        
+
+        try:
+            login_data = UserLogin(
+                login_id = self.username_input.text(),
+                Password = self.password_input.text()
+            )
+            response = self.api_client.login(login_data)
+            self.user_context.set_user(response.dict(), response.access_token)
+            self.error_label.setText("Login successful!")
+            self.navigation_manager.switch_screen('Dashboard')
+        except Exception as e:
+            if "connection" in str(e).lower():
+                self.error_label.setText("Cannot connect to server. Please make sure the backend service is running.")
+            else:
+                self.error_label.setText(f"Login failed: {str(e)}")
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/main_window.py
+<DOCUMENT>
+from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from src.ui.login import LoginScreen
+from src.ui.signup import SignupScreen
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Banking App")
+        self.resize(800, 600)
+        
+        # Create stacked widget for screen navigation
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+        
+        # Initialize screens
+        self.login_screen = LoginScreen(self)
+        self.signup_screen = SignupScreen(self)
+        
+        # Add screens to stack
+        self.stack.addWidget(self.login_screen)
+        self.stack.addWidget(self.signup_screen)
+        
+        # Set initial screen
+        self.stack.setCurrentWidget(self.login_screen)
+    
+    def switch_to_login(self):
+        self.stack.setCurrentWidget(self.login_screen)
+    
+    def switch_to_signup(self):
+        self.stack.setCurrentWidget(self.signup_screen)
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/signup.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QCheckBox, QDateEdit
+from PySide6.QtCore import Qt, QDate
+from src.api.client import APIClient
+from src.schemas.schemas import UserCreate
+from src.context.user_context import UserContext
+from datetime import date
+
+class SignupScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.api_client = APIClient()
+        self.user_context = UserContext()
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setAlignment(Qt.AlignTop)
+        main_layout.setSpacing(40)
+
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        bank_name.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(bank_name)
+
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        tagline.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(tagline)
+
+        card = QWidget()
+        card.setObjectName("card")
+        card.setFixedWidth(450)
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(20)
+        card_layout.setContentsMargins(40, 40, 40, 40)
+
+        title = QLabel("Create your account")
+        title.setObjectName("title")
+        title.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(title)
+
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Choose a username")
+        card_layout.addWidget(self.username_input)
+
+        self.fullname_input = QLineEdit()
+        self.fullname_input.setPlaceholderText("Enter your full name")
+        card_layout.addWidget(self.fullname_input)
+
+        self.email_input = QLineEdit()
+        self.email_input.setPlaceholderText("Enter your email")
+        card_layout.addWidget(self.email_input)
+
+        self.cnic_input = QLineEdit()
+        self.cnic_input.setPlaceholderText("Enter CNIC (xxxxx-xxxxxxx-x)")
+        card_layout.addWidget(self.cnic_input)
+
+        self.dob_input = QDateEdit()
+        self.dob_input.setDisplayFormat("yyyy-MM-dd")
+        self.dob_input.setDate(QDate(1990, 1, 1))
+        card_layout.addWidget(self.dob_input)
+
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Create a password")
+        self.password_input.setEchoMode(QLineEdit.password)
+        card_layout.addWidget(self.password_input)
+
+        terms_layout = QHBoxLayout()
+        terms_checkbox = QCheckBox(" Agree to terms and conditions")
+        terms_layout.addWidget(terms_checkbox)
+        card_layout.addLayout(terms_layout)
+
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("error")
+        self.error_label.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(self.error_label)
+
+        signup_button = QPushButton("Sign Up")
+        signup_button.clicked.connect(self.handle_signup)
+        card_layout.addWidget(signup_button)
+
+        login_link = QPushButton("Already have an account? Login")
+        login_link.setObjectName("link")
+        login_link.clicked.connect(lambda: self.parent().switch_screen('Login'))
+        card_layout.addWidget(login_link)
+
+        main_layout.addWidget(card, alignment=Qt.AlignCenter)
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+    def handle_signup(self):
+        if not all([self.username_input.text(), self.fullname_input.text(), self.email_input.text(), 
+                    self.cnic_input.text(), self.password_input.text()]):
+            self.error_label.setText("Please fill in all fields")
+            return
+
+        try:
+            signup_data = UserCreate(
+                username=self.username_input.text(),
+                FirstName=self.fullname_input.text().split()[0] if self.fullname_input.text() else "",
+                LastName=" ".join(self.fullname_input.text().split()[1:]) if len(self.fullname_input.text().split()) > 1 else "",
+                Email=self.email_input.text(),
+                CNIC=self.cnic_input.text(),
+                DateOfBirth=date(self.dob_input.date().year(), self.dob_input.date().month(), self.dob_input.date().day()),
+                password=self.password_input.text(),
+                AccountType="Savings",
+                IsActive=False,
+            )
+            response = self.api_client.register(signup_data)
+            self.user_context.set_user(response.dict(), None)
+            self.error_label.setText("Registration successful!")
+            self.parent().switch_screen('Dashboard')
+        except Exception as e:
+            self.error_label.setText(f"Registration failed: {str(e)}")
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/splash.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
+
+class SplashScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(1000, 700)
+        self.animations = []
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(40)
+
+        # Animated welcome text
+        welcome_text = "Welcome to AUT Finance Bank..."
+        self.label_container = QWidget()
+        label_layout = QHBoxLayout(self.label_container)
+        label_layout.setSpacing(6)
+        label_layout.setAlignment(Qt.AlignCenter)
+
+        for char in welcome_text:
+            label = QLabel(char)
+            label.setObjectName("title")
+            label.setProperty("opacity", 0.0)
+            label_layout.addWidget(label)
+
+            # Animation for each character
+            anim = QPropertyAnimation(label, b"opacity")
+            anim.setDuration(500)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            self.animations.append(anim)
+
+        layout.addWidget(self.label_container)
+        layout.addStretch()
+        self.setLayout(layout)
+
+        # Start animations
+        self.start_animations()
+
+    def start_animations(self):
+        for i, anim in enumerate(self.animations):
+            QTimer.singleShot(i * 100, lambda: anim.start())
+
+        # Transition to login screen after animations
+        QTimer.singleShot(len(self.animations) * 100 + 2000, self.finish_splash)
+
+    def finish_splash(self):
+        self.parent().switch_screen('Login')
+        self.close()
+
+    def opacity(self, widget, value):
+        widget.setStyleSheet(f"opacity: {value};")
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/trnasfer.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+from PySide6.QtCore import Qt
+from src.api.client import APIClient
+from src.schemas.schemas import TransferCreate
+from decimal import Decimal
+
+class TransferScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.api_client = APIClient()
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setAlignment(Qt.AlignTop)
+        main_layout.setSpacing(40)
+
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        bank_name.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(bank_name)
+
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        tagline.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(tagline)
+
+        card = QWidget()
+        card.setObjectName("card")
+        card.setFixedWidth(450)
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(20)
+        card_layout.setContentsMargins(40, 40, 40, 40)
+
+        title = QLabel("Send Money")
+        title.setObjectName("title")
+        title.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(title)
+
+        self.recipient_input = QLineEdit()
+        self.recipient_input.setPlaceholderText("Enter recipient CNIC or email")
+        card_layout.addWidget(self.recipient_input)
+
+        self.amount_input = QLineEdit()
+        self.amount_input.setPlaceholderText("Enter amount")
+        card_layout.addWidget(self.amount_input)
+
+        self.description_input = QLineEdit()
+        self.description_input.setPlaceholderText("Enter description (optional)")
+        card_layout.addWidget(self.description_input)
+
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("error")
+        self.error_label.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(self.error_label)
+
+        transfer_button = QPushButton("Send")
+        transfer_button.clicked.connect(self.handle_transfer)
+        card_layout.addWidget(transfer_button)
+
+        back_button = QPushButton("Back to Dashboard")
+        back_button.setObjectName("link")
+        back_button.clicked.connect(lambda: self.parent().switch_screen('Dashboard'))
+        card_layout.addWidget(back_button)
+
+        main_layout.addWidget(card, alignment=Qt.AlignCenter)
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+    def handle_transfer(self):
+        if not self.recipient_input.text() or not self.amount_input.text():
+            self.error_label.setText("Please fill in recipient and amount")
+            return
+
+        try:
+            amount = Decimal(self.amount_input.text())
+            transfer_data = TransferCreate(
+                cnic=self.recipient_input.text() if '-' in self.recipient_input.text() else None,
+                email=self.recipient_input.text() if '@' in self.recipient_input.text() else None,
+                Amount=amount,
+                Description=self.description_input.text() or None
+            )
+            response = self.api_client.create_transfer(transfer_data)
+            self.error_label.setText(f"Transfer successful! Ref: {response.ReferenceNumber}")
+        except ValueError:
+            self.error_label.setText("Invalid amount format")
+        except Exception as e:
+            self.error_label.setText(f"Transfer failed: {str(e)}")
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/user_check.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
+from PySide6.QtCore import Qt
+
+class UserCheckScreen(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Title
+        self.title = QLabel("Welcome to Banking App")
+        self.title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title)
+        
+        # Buttons
+        self.login_button = QPushButton("Login")
+        self.login_button.clicked.connect(self.parent.switch_to_login)
+        layout.addWidget(self.login_button)
+        
+        self.signup_button = QPushButton("Sign Up")
+        self.signup_button.clicked.connect(self.parent.switch_to_signup)
+        layout.addWidget(self.signup_button)
+        
+        self.setLayout(layout)
+        
+        # Apply styles
+        with open("src/styles/user_check.qss", "r") as f:
+            self.setStyleSheet(f.read())
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/signup/signup_screen.py
+<DOCUMENT>
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+    QFormLayout
+)
+from PySide6.QtCore import Qt
+
+class SignupScreen(QWidget):
+    def __init__(self, navigation_manager):
+        super().__init__()
+        self.navigation_manager = navigation_manager
+        self.setup_ui()
+
+    def setup_ui(self):
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
+
+        # Title
+        title = QLabel("Sign Up")
+        title.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(title)
+
+        # Form layout for inputs
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+
+        # Username field
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Enter username")
+        form_layout.addRow("Username:", self.username_input)
+
+        # Password field
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Enter your password")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        form_layout.addRow("Password:", self.password_input)
+
+        # Confirm password field
+        self.confirm_password_input = QLineEdit()
+        self.confirm_password_input.setPlaceholderText("Confirm password")
+        self.confirm_password_input.setEchoMode(QLineEdit.Password)
+        form_layout.addRow("Confirm Password:", self.confirm_password_input)
+
+        main_layout.addLayout(form_layout)
+
+        # Sign Up button
+        signup_button = QPushButton("Sign Up")
+        signup_button.clicked.connect(self.handle_signup)
+        main_layout.addWidget(signup_button)
+
+        # Login link
+        login_link = QPushButton("Already have an account? Login")
+        login_link.setFlat(True)
+        login_link.clicked.connect(self.go_to_login)
+        main_layout.addWidget(login_link)
+
+    def handle_signup(self):
+        username = self.username_input.text()
+        password = self.password_input.text()
+        confirm_password = self.confirm_password_input.text()
+
+        if not username or not password or not confirm_password:
+            QMessageBox.warning(self, "Error", "All fields are required")
+            return
+
+        if password != confirm_password:
+            QMessageBox.warning(self, "Error", "passwords do not match")
+            return
+
+        # TODO: Implement actual signup logic here
+        QMessageBox.information(self, "Success", "Account created successfully!")
+        self.go_to_login()
+
+    def go_to_login(self):
+        self.navigation_manager.switch_screen('Login')  # Changed from navigate_to_login to switch_screeny
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/splash/splash_screen.py
+<DOCUMENT>
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, Signal, QTimer
+
+class SplashScreen(QWidget):
+    finished = Signal()  # Add the finished signal
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setup_ui()
+        self.start_timer()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        # Add splash screen content
+        title = QLabel("AUT Finance Bank")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("""
+            QLabel {
+                color: #2b2b2b;
+                font-size: 24px;
+                font-weight: bold;
+            }
+        """)
+        layout.addWidget(title)
+
+        # Set fixed size for splash screen
+        self.setFixedSize(400, 300)
+        # Center the splash screen
+        self.center_on_screen()
+
+    def center_on_screen(self):
+        from PySide6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width() - self.width()) // 2,
+            (screen.height() - self.height()) // 2
+        )
+
+    def start_timer(self):
+        # Show splash screen for 2 seconds
+        QTimer.singleShot(2000, self.on_timeout)
+
+    def on_timeout(self):
+        self.finished.emit()  # Emit the finished signal
+        self.close()
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/screens/transfer/transfer_screen.py
+<DOCUMENT>
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QLabel,
+    QMessageBox
+)
+from PySide6.QtCore import Qt
+
+class TransferScreen(QWidget):
+    def __init__(self, navigation_manager):
+        super().__init__()
+        self.navigation_manager = navigation_manager
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        # Title
+        title = QLabel("Send Money")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Recipient Account field
+        self.recipient_input = QLineEdit()
+        self.recipient_input.setPlaceholderText("Recipient Account Number")
+        layout.addWidget(self.recipient_input)
+
+        # Amount field
+        self.amount_input = QLineEdit()
+        self.amount_input.setPlaceholderText("Amount")
+        layout.addWidget(self.amount_input)
+
+        # Description field
+        self.description_input = QLineEdit()
+        self.description_input.setPlaceholderText("Description (Optional)")
+        layout.addWidget(self.description_input)
+
+        # Send button
+        send_button = QPushButton("Send Money")
+        send_button.clicked.connect(self.handle_transfer)
+        layout.addWidget(send_button)
+
+    def handle_transfer(self):
+        recipient = self.recipient_input.text()
+        amount = self.amount_input.text()
+        description = self.description_input.text()
+
+        if not recipient or not amount:
+            QMessageBox.warning(self, "Error", "Recipient and amount are required")
+            return
+
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Invalid amount")
+            return
+
+        # TODO: Implement actual transfer logic here
+        QMessageBox.information(self, "Success", "Transfer initiated successfully!")
+        self.clear_fields()
+
+    def clear_fields(self):
+        self.recipient_input.clear()
+        self.amount_input.clear()
+        self.description_input.clear()
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/ui/theme/theme_loader.py
+<DOCUMENT>
+import json
+import os
+from pathlib import Path
+
+class ThemeLoader:
+    def __init__(self):
+        self._themes = None
+        self.load_themes()
+
+    def load_themes(self):
+        """Load themes from the themes directory"""
+        themes_dir = Path(__file__).parent / 'themes'
+        self._themes = []
+        
+        # Default dark theme
+        self._themes.append({
+            "name": "Dark",
+            "styles": {
+                "background": "#2b2b2b",
+                "text": "#ffffff",
+                "button": "#404040",
+                "button_text": "#ffffff",
+                "input_background": "#3b3b3b",
+                "input_text": "#ffffff",
+                "border": "#505050"
+            }
+        })
+        
+        # Default light theme
+        self._themes.append({
+            "name": "Light",
+            "styles": {
+                "background": "#ffffff",
+                "text": "#000000",
+                "button": "#e0e0e0",
+                "button_text": "#000000",
+                "input_background": "#f5f5f5",
+                "input_text": "#000000",
+                "border": "#cccccc"
+            }
+        })
+
+    @property
+    def themes(self):
+        """Return the list of available themes"""
+        return self._themes
+
+    def get_theme_by_name(self, name):
+        """Get a theme by its name"""
+        for theme in self._themes:
+            if theme["name"].lower() == name.lower():
+                return theme
+        return None
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/utils/avatar_generator.py
+<DOCUMENT>
+from PIL import Image, ImageDraw
+import os
+
+class AvatarGenerator:
+    def generate_avatar(self, user_id, size=(100, 100)):
+        # Simple avatar: First letter of user_id on green background
+        img = Image.new('RGB', size, color='#2ECC71')
+        draw = ImageDraw.Draw(img)
+        text = user_id[0].upper() if user_id else 'U'
+        draw.text((size[0]//2-10, size[1]//2-10), text, fill='#FFFFFF')
+        
+        save_path = f"assets/images/users/{user_id}.png"
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        img.save(save_path)
+        return save_path
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/utils/config.py
+<DOCUMENT>
+import os
+import json
+from pathlib import Path
+
+def load_config():
+    """
+    Load configuration from config.json file or return default config
+    """
+    config_path = Path(__file__).parent.parent.parent / "config.json"
+    default_config = {
+        "DEFAULT_THEME": "dark",
+        "WINDOW_SIZE": {
+            "width": 1000,
+            "height": 700
+        },
+        "APP_NAME": "AUT Finance Bank Desktop",
+        "DEMO_MODE": True
+    }
+
+    try:
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                return json.load(f)
+        else:
+            # Create default config file if it doesn't exist
+            with open(config_path, "w") as f:
+                json.dump(default_config, f, indent=4)
+            return default_config
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return default_config
+
+class ThemeLoader:
+    def load_theme(self, theme_name):
+        # Placeholder: In a real app, this would load theme-specific settings
+        return {"theme": theme_name}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/utils/logger.py
+<DOCUMENT>
+import logging
+
+def setup_logger():
+    logger = logging.getLogger('banking_app')
+    logger.setLevel(logging.INFO)
+    
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    
+    return logger
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/utils/theme_loader.py
+<DOCUMENT>
+class ThemeLoader:
+    def __init__(self):
+        self._themes = [
+            {
+                "id": 1,
+                "name": "Light",
+                "styles": {
+                    "background": "#ffffff",
+                    "text": "#000000",
+                    "button": "#e0e0e0",
+                    "button_text": "#000000",
+                    "input_background": "#f5f5f5",
+                    "input_text": "#000000",
+                    "border": "#cccccc",
+                    "sidebar": "#f0f0f0"
+                }
+            },
+            {
+                "id": 2,
+                "name": "Dark",
+                "styles": {
+                    "background": "#2b2b2b",
+                    "text": "#ffffff",
+                    "button": "#404040",
+                    "button_text": "#ffffff",
+                    "input_background": "#3b3b3b",
+                    "input_text": "#ffffff",
+                    "border": "#505050",
+                    "sidebar": "#1b1b1b"
+                }
+            }
+        ]
+
+    @property
+    def themes(self):
+        return self._themes
+
+    def get_theme_by_id(self, theme_id):
+        return next((theme for theme in self._themes if theme["id"] == theme_id), None)
+
+    def apply_theme(self, app):
+        # Apply default theme (Light)
+        self.switch_theme(1, app)
+
+    def switch_theme(self, theme_id, app):
+        theme = self.get_theme_by_id(theme_id)
+        if not theme:
+            return
+
+        styles = theme["styles"]
+        app.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {styles["background"]};
+                color: {styles["text"]};
+            }}
+            QWidget {{
+                background-color: {styles["background"]};
+                color: {styles["text"]};
+            }}
+            QPushButton {{
+                background-color: {styles["button"]};
+                color: {styles["button_text"]};
+                border: 1px solid {styles["border"]};
+                padding: 5px;
+                border-radius: 3px;
+            }}
+            QLineEdit {{
+                background-color: {styles["input_background"]};
+                color: {styles["input_text"]};
+                border: 1px solid {styles["border"]};
+                padding: 5px;
+                border-radius: 3px;
+            }}
+            QComboBox {{
+                background-color: {styles["input_background"]};
+                color: {styles["input_text"]};
+                border: 1px solid {styles["border"]};
+                padding: 5px;
+                border-radius: 3px;
+            }}
+            #sidebar {{
+                background-color: {styles["sidebar"]};
+                border-right: 1px solid {styles["border"]};
+            }}
+            #sidebar-button {{
+                text-align: left;
+                padding: 10px;
+                border-radius: 0;
+                border: none;
+                background-color: transparent;
+            }}
+            #sidebar-button:hover {{
+                background-color: {styles["button"]};
+            }}
+        """)
+
+    def load_theme(self, theme_name):
+        # Placeholder: In a real app, this would load theme-specific settings
+        return {"theme": theme_name}
+</DOCUMENT>
+
+d:/banking-desktop-app/app/src/utils/validators.py
+<DOCUMENT>
+from pydantic import BaseModel, EmailStr, constr, validator
+
+class UserCreateSchema(BaseModel):
+    username: EmailStr
+    FullName: constr(min_length=2, max_length=50)
+    password: constr(min_length=8)
+
+    @validator('password')
+    def password_strength(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError('password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('password must contain at least one number')
+        return v
+
+class UserLoginSchema(BaseModel):
+    username: EmailStr
+    password: constr(min_length=8)
+
+    @validator('password')
+    def password_strength(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError('password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('password must contain at least one number')
+        return v
+</DOCUMENT>
+
+d:/banking-desktop-app/app/styles/global_styles.py
+<DOCUMENT>
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt
+
+# Screen dimensions for desktop
+SCREEN_WIDTH = 1000
+SCREEN_HEIGHT = 700
+
+# Color palette (inspired by the image but adjusted per requirements)
+COLORS = {
+    'primary': QColor('#28A745'),  # Green for cards
+    'secondary': QColor('#20C997'),  # Teal for hover effects
+    'background': QColor('#FFFFFF'),  # White background
+    'text': QColor('#2D3436'),  # Dark gray for text
+    'placeholder': QColor('#A0AEC0'),  # Light gray for placeholders
+    'danger': QColor('#DC3545'),  # Red for errors
+    'white': QColor('#FFFFFF'),
+    'black': QColor('#000000'),
+    'gray': QColor('#E2E8F0'),  # Light gray for borders
+    'button_gradient_start': QColor('#4A90E2'),  # Blue gradient start (from image)
+    'button_gradient_end': QColor('#357ABD'),  # Blue gradient end (from image)
+}
+
+# Font sizes
+FONT_SIZES = {
+    'tiny': 12,
+    'small': 14,
+    'medium': 18,
+    'large': 24,
+    'xlarge': 36,
+}
+
+# Spacing
+SPACING = {
+    'tiny': 6,
+    'small': 12,
+    'medium': 20,
+    'large': 30,
+    'xlarge': 40,
+}
+
+# Fonts
+FONTS = {
+    'regular': QFont('Roboto', FONT_SIZES['medium']),
+    'bold': QFont('Roboto', FONT_SIZES['medium'], QFont.Bold),
+    'large': QFont('Roboto', FONT_SIZES['large'], QFont.Bold),
+    'xlarge': QFont('Roboto', FONT_SIZES['xlarge'], QFont.Bold),
+}
+
+# Widget styles
+def get_button_style():
+    return f"""
+        QPushButton {{
+            background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                stop:0 {COLORS['button_gradient_start'].name()},
+                stop:1 {COLORS['button_gradient_end'].name()});
+            color: {COLORS['white'].name()};
+            font-size: {FONT_SIZES['medium']}px;
+            font-weight: bold;
+            padding: {SPACING['medium']}px {SPACING['xlarge']}px;
+            border-radius: 10px;
+            border: none;
+        }}
+        QPushButton:hover {{
+            background-color: {COLORS['secondary'].name()};
+        }}
+        QPushButton:pressed {{
+            background-color: {COLORS['button_gradient_end'].name()};
+        }}
+        QPushButton:disabled {{
+            opacity: 0.6;
+        }}
+    """
+
+def get_input_style():
+    return f"""
+        QLineEdit {{
+            background-color: {COLORS['white'].name()};
+            border: 1px solid {COLORS['gray'].name()};
+            border-radius: 8px;
+            padding: {SPACING['small']}px;
+            font-size: {FONT_SIZES['medium']}px;
+            color: {COLORS['text'].name()};
+        }}
+        QLineEdit:focus {{
+            border: 2px solid {COLORS['primary'].name()};
+        }}
+        QLineEdit:placeholder {{
+            color: {COLORS['placeholder'].name()};
+        }}
+    """
+
+def get_label_style(size='medium'):
+    weight = 'bold' if size in ['large', 'xlarge'] else 'normal'
+    return f"""
+        QLabel {{
+            font-size: {FONT_SIZES[size]}px;
+            color: {COLORS['text'].name()};
+            font-weight: {weight};
+        }}
+    """
+
+def get_card_style():
+    return f"""
+        QWidget {{
+            background-color: {COLORS['primary'].name()};
+            border-radius: 12px;
+            padding: {SPACING['medium']}px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }}
+    """
+</DOCUMENT>
+
+d:/banking-desktop-app/app/utils/read_all_files.py
+<DOCUMENT>
+import os
+
+def read_all_files(directory, encoding="utf-8"):
+    """
+    Recursively reads all files in the given directory and returns a dictionary
+    mapping file paths to their contents.
+
+    Args:
+        directory (str): The root directory to start reading files from.
+        encoding (str): The encoding to use when reading files.
+
+    Returns:
+        dict: {relative_file_path: file_content}
+    """
+    files_content = {}
+    # List of binary file extensions to skip
+    binary_extensions = {'.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.bin', '.jpg', '.jpeg', '.png', '.gif', '.ico'}
+    
+    for root, _, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            _, ext = os.path.splitext(file_path)
+            
+            # Skip binary files
+            if ext.lower() in binary_extensions:
+                continue
+                
+            try:
+                with open(file_path, "r", encoding=encoding) as f:
+                    rel_path = os.path.relpath(file_path, directory)
+                    files_content[rel_path] = f.read()
+            except UnicodeDecodeError:
+                # Skip files that can't be decoded as text
+                continue
+            except Exception as e:
+                print(f"Could not read {file_path}: {e}")
+    
+    return files_content
+
+# Example usage:
+# all_files = read_all_files("src")
+# for path, content in all_files.items():
+#     print(f"--- {path} ---\n{content}\n")
+</DOCUMENT>
+

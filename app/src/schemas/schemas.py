@@ -2,18 +2,8 @@ from datetime import date
 from pydantic import BaseModel, EmailStr, constr, validator
 
 class UserLogin(BaseModel):
-    username: str
-    password: constr(min_length=8)
-
-    @validator('password')
-    def password_strength(cls, v):
-        if not any(c.isupper() for c in v):
-            raise ValueError('password must contain at least one uppercase letter')
-        if not any(c.islower() for c in v):
-            raise ValueError('password must contain at least one lowercase letter')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('password must contain at least one number')
-        return v
+    login_id: str
+    Password: constr(min_length=8)
 
 class UserCreate(BaseModel):
     username: str

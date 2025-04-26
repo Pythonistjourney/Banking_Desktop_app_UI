@@ -91,8 +91,8 @@ class LoginScreen(QWidget):
 
         try:
             login_data = UserLogin(
-                username = self.username_input.text(),
-                password = self.password_input.text()
+                login_id = self.username_input.text(),
+                Password = self.password_input.text()
             )
             response = self.api_client.login(login_data)
             self.user_context.set_user(response.dict(), response.access_token)
