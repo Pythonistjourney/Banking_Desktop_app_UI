@@ -1,12 +1,15 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QCheckBox
-from PySide6.QtCore import Qt, QPropertyAnimation, QTimer
-from src.services.api import APIClient
-from src.utils.validators import UserLoginSchema
+from PySide6.QtCore import Qt, QPropertyAnimation
+from src.api.client import APIClient
+from src.schemas.schemas import UserLogin
+from src.context.user_context import UserContext
 
 class LoginScreen(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, navigation_manager):
+        super().__init__()
+        self.navigation_manager = navigation_manager
         self.api_client = APIClient()
+        self.user_context = UserContext()
         self.animations = []
         self.init_ui()
 
@@ -15,75 +18,55 @@ class LoginScreen(QWidget):
         main_layout.setAlignment(Qt.AlignTop)
         main_layout.setSpacing(40)
 
-        # Animated bank name
-        bank_name = "AUT Finance Bank"
-        header_container = QWidget()
-        header_layout = QHBoxLayout(header_container)
-        header_layout.setAlignment(Qt.AlignCenter)
-        header_layout.setSpacing(6)
+        bank_name = QLabel("AUT Finance Bank")
+        bank_name.setObjectName("bank_name")
+        bank_name.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(bank_name)
 
-        for char in bank_name:
-            label = QLabel(char)
-            label.setObjectName("title")
-            label.setProperty("opacity", 0.0)
-            header_layout.addWidget(label)
+        tagline = QLabel("Secure Banking Solutions")
+        tagline.setObjectName("tagline")
+        tagline.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(tagline)
 
-            # Animation for each character
-            anim = QPropertyAnimation(label, b"opacity")
-            anim.setDuration(500)
-            anim.setStartValue(0.0)
-            anim.setEndValue(1.0)
-            self.animations.append(anim)
-
-        main_layout.addWidget(header_container)
-
-        # Card container
         card = QWidget()
         card.setObjectName("card")
         card.setFixedWidth(450)
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(20)
-        card_layout.setContentsMargins(20, 20, 20, 20)
+        card_layout.setContentsMargins(40, 40, 40, 40)
 
-        # Title
-        title = QLabel("Sign in to continue")
-        title.setObjectName("subtitle")
+        title = QLabel("Sign in to your account")
+        title.setObjectName("title")
         title.setAlignment(Qt.AlignCenter)
         card_layout.addWidget(title)
 
-        # Username input
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Username")
+        self.username_input.setPlaceholderText("Enter your username or email")
         card_layout.addWidget(self.username_input)
 
-        # Password input
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Password")
+        self.password_input.setPlaceholderText("Enter your password")
         self.password_input.setEchoMode(QLineEdit.Password)
         card_layout.addWidget(self.password_input)
 
-        # Terms checkbox
         terms_layout = QHBoxLayout()
-        terms_checkbox = QCheckBox("I agree with the terms and conditions")
+        terms_checkbox = QCheckBox(" Agree to terms and conditions")
         terms_layout.addWidget(terms_checkbox)
         card_layout.addLayout(terms_layout)
 
-        # Error message
         self.error_label = QLabel("")
         self.error_label.setObjectName("error")
         self.error_label.setAlignment(Qt.AlignCenter)
         card_layout.addWidget(self.error_label)
 
-        # Login button
         login_button = QPushButton("Log In")
         login_button.clicked.connect(self.handle_login)
         card_layout.addWidget(login_button)
 
-        # Links
         links_layout = QHBoxLayout()
         signup_link = QPushButton("Don't have an account? Sign Up")
         signup_link.setObjectName("link")
-        signup_link.clicked.connect(lambda: self.parent().switch_screen('Signup'))
+        signup_link.clicked.connect(lambda: self.navigation_manager.switch_screen('Signup'))
         links_layout.addWidget(signup_link)
         card_layout.addLayout(links_layout)
 
@@ -91,27 +74,28 @@ class LoginScreen(QWidget):
         main_layout.addStretch()
         self.setLayout(main_layout)
 
-        # Start header animation
-        self.start_animations()
+        self.start_animation(title)
 
-    def start_animations(self):
-        for i, anim in enumerate(self.animations):
-            QTimer.singleShot(i * 100, lambda: anim.start())
+    def start_animation(self, widget):
+        anim = QPropertyAnimation(widget, b"windowOpacity")
+        anim.setDuration(800)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
 
     def handle_login(self):
-        try:
-            login_data = {
-                'login_id': self.username_input.text(),
-                'Password': self.password_input.text(),
-            }
-            UserLoginSchema.validate(login_data)
-            response = self.api_client.post('/api/v1/users/login', login_data)
-            if response.get('success'):
-                self.parent().switch_screen('Dashboard')
-            else:
-                self.error_label.setText(response.get('message', 'Login failed'))
-        except Exception as e:
-            self.error_label.setText(str(e))
+        if not self.username_input.text() or not self.password_input.text():
+            self.error_label.setText("Please fill in all fields")
+            return
 
-    def opacity(self, widget, value):
-        widget.setStyleSheet(f"opacity: {value};")
+        try:
+            login_data = UserLogin(
+                login_id=self.username_input.text(),
+                Password=self.password_input.text(),
+            )
+            response = self.api_client.login(login_data)
+            self.user_context.set_user(response.dict(), response.access_token)
+            self.error_label.setText("Login successful!")
+            self.navigation_manager.switch_screen('Dashboard')
+        except Exception as e:
+            self.error_label.setText(f"Login failed: {str(e)}")
