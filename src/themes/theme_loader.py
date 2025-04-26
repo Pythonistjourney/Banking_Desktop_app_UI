@@ -1,30 +1,41 @@
-from src.styles.global_styles import GlobalStyles
-from dataclasses import replace
+import json
+import os
+from PySide6.QtWidgets import QApplication
 
 class ThemeLoader:
-    def __init__(self):
-        self.global_styles = GlobalStyles()
-        self._original_styles = GlobalStyles()
+    def __init__(self, themes_file="src/themes/themes.json"):
+        self.themes_file = themes_file
+        self.themes = self.load_themes()
+        self.current_theme = "dark"  # Default theme
 
-    def load_theme(self, theme_name: str) -> str:
-        # Reset to original styles before applying new theme
-        self.global_styles = replace(self._original_styles)
-        
-        themes = {
-            "light": self.global_styles.get_stylesheet(),
-            "dark": self._get_dark_theme()
-        }
-        return themes.get(theme_name, themes["light"])
+    def load_themes(self):
+        try:
+            with open(self.themes_file, 'r') as f:
+                return json.load(f).get("themes", [])
+        except Exception as e:
+            print(f"Error loading themes: {e}")
+            return []
 
-    def _get_dark_theme(self) -> str:
-        # Create new colors for dark theme without modifying original
-        dark_colors = replace(self.global_styles.colors,
-            background="#1E1E1E",
-            surface="#2D2D2D",
-            text_primary="#FFFFFF",
-            text_secondary="#CCCCCC",
-            primary="#3700B3",
-            secondary="#03DAC6"
-        )
-        self.global_styles.colors = dark_colors
-        return self.global_styles.get_stylesheet()
+    def get_theme(self, theme_id):
+        for theme in self.themes:
+            if theme["id"] == theme_id:
+                return theme
+        return self.themes[0] if self.themes else {}
+
+    def apply_theme(self, app: QApplication, theme_id: str = None):
+        if theme_id:
+            self.current_theme = theme_id
+        theme = self.get_theme(self.current_theme)
+        variables = theme.get("variables", {})
+
+        # Load global stylesheet and replace variables
+        with open("src/styles/global.qss", "r") as f:
+            stylesheet = f.read()
+
+        for var, value in variables.items():
+            stylesheet = stylesheet.replace(f"@{var}", value)
+
+        app.setStyleSheet(stylesheet)
+
+    def switch_theme(self, theme_id: str, app: QApplication):
+        self.apply_theme(app, theme_id)

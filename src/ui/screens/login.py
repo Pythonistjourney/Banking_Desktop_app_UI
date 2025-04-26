@@ -46,7 +46,7 @@ class LoginScreen(QWidget):
 
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Enter your password")
-        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setEchoMode(QLineEdit.Password)  # Fixed: Changed from lowercase 'password' to 'Password'
         card_layout.addWidget(self.password_input)
 
         terms_layout = QHBoxLayout()
@@ -87,15 +87,19 @@ class LoginScreen(QWidget):
         if not self.username_input.text() or not self.password_input.text():
             self.error_label.setText("Please fill in all fields")
             return
+        
 
         try:
             login_data = UserLogin(
-                login_id=self.username_input.text(),
-                Password=self.password_input.text(),
+                username = self.username_input.text(),
+                password = self.password_input.text()
             )
             response = self.api_client.login(login_data)
             self.user_context.set_user(response.dict(), response.access_token)
             self.error_label.setText("Login successful!")
             self.navigation_manager.switch_screen('Dashboard')
         except Exception as e:
-            self.error_label.setText(f"Login failed: {str(e)}")
+            if "connection" in str(e).lower():
+                self.error_label.setText("Cannot connect to server. Please make sure the backend service is running.")
+            else:
+                self.error_label.setText(f"Login failed: {str(e)}")

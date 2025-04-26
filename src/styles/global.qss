@@ -1,128 +1,97 @@
-/* Global styles for the application */
-
-/* Window background */
-QMainWindow, QWidget {
-    background-color: #FFFFFF; /* White background */
+QWidget {
+    background-color: @background;
+    color: @foreground;
+    font-family: 'Roboto', sans-serif;
 }
 
-/* Labels */
 QLabel#bank_name {
-    font-size: 40px;
+    font-size: 32px;
     font-weight: bold;
-    color: #006400; /* Dark green for bank name */
-    font-family: 'Roboto';
+    color: @primary;
 }
 
 QLabel#tagline {
     font-size: 18px;
-    color: #666;
-    font-family: 'Roboto';
+    color: @muted-foreground;
 }
 
-QLabel#welcome_message {
-    font-size: 20px;
-    color: #008000; /* Green for welcome message */
-    font-family: 'Roboto';
-    animation: fadeIn 0.8s ease-out;
+QWidget#card, QWidget#dashboard_card {
+    background-color: @card;
+    border-radius: @radius;
+    padding: 20px;
+    border: 1px solid @border;
 }
 
 QLabel#title {
     font-size: 24px;
     font-weight: bold;
-    color: #FFFFFF; /* White text for green cards */
-    font-family: 'Roboto';
+    color: @card-foreground;
 }
 
-QLabel#subtitle {
-    font-size: 16px;
-    color: #FFFFFF; /* White text for green cards */
-    font-family: 'Roboto';
-}
-
-QLabel#error {
-    font-size: 14px;
-    color: #FFFFFF; /* White for errors in green cards */
-    font-family: 'Roboto';
-}
-
-QLabel#link {
-    font-size: 14px;
-    color: #FFFFFF; /* White for links in green cards */
-    font-family: 'Roboto';
-}
-
-/* Buttons */
-QPushButton {
-    background-color: #008000; /* Green button */
-    color: #FFFFFF;
-    font-size: 16px;
-    font-weight: bold;
-    padding: 12px 24px;
-    border-radius: 8px;
-    border: none;
-    font-family: 'Roboto';
-}
-
-QPushButton:hover {
-    background-color: #006400; /* Darker green on hover */
-}
-
-/* Input fields */
 QLineEdit {
-    background-color: #FFFFFF;
-    border: 1px solid #DDD; /* Light gray border */
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 16px;
-    color: #333;
-    font-family: 'Roboto';
+    background-color: @input;
+    border: 1px solid @border;
+    border-radius: 5px;
+    padding: 10px;
+    color: @foreground;
+    font-size: 14px;
 }
 
 QLineEdit:focus {
-    border: 1px solid #008000; /* Green border on focus */
-    box-shadow: 0 0 0 3px rgba(0, 128, 0, 0.1);
+    border-color: @ring;
+    outline: none;
 }
 
-QLineEdit::placeholder {
-    color: #666; /* Gray placeholder */
-}
-
-/* Checkboxes */
-QCheckBox {
-    color: #FFFFFF; /* White for green cards */
+QPushButton {
+    background-color: @primary;
+    color: @primary-foreground;
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
     font-size: 14px;
-    font-family: 'Roboto';
+    font-weight: bold;
 }
 
-/* Cards */
-QWidget#card {
-    background-color: #008000; /* Green card */
-    border-radius: 12px;
-    padding: 40px;
-    box-shadow: 0 8px 24px rgba(0, 100, 0, 0.1);
+QPushButton:hover {
+    background-color: @secondary;
+    color: @secondary-foreground;
 }
 
-/* Progress dots */
-QLabel#dot {
-    background-color: #DDD; /* Inactive dot */
-    border-radius: 6px;
+QPushButton#link {
+    background: none;
+    color: @accent-foreground;
+    font-size: 12px;
+    text-decoration: underline;
 }
 
-QLabel#dot_active {
-    background-color: #FFFFFF; /* White dot for active step */
-    border-radius: 6px;
+QPushButton#link:hover {
+    color: @primary;
 }
 
-/* Dashboard widgets */
-QWidget#dashboard_card {
-    background-color: #008000; /* Green dashboard card */
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 8px 24px rgba(0, 100, 0, 0.1);
+QLabel#error {
+    color: @destructive;
+    font-size: 12px;
 }
 
-/* Animation for welcome message */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+QCheckBox {
+    color: @foreground;
+    font-size: 14px;
+}
+
+QWidget#sidebar {
+    background-color: @sidebar;
+    border-right: 1px solid @sidebar-border;
+}
+
+QPushButton#sidebar-button {
+    background-color: @sidebar-primary;
+    color: @sidebar-primary-foreground;
+    border: none;
+    padding: 10px;
+    font-size: 14px;
+}
+
+QPushButton#sidebar-button:hover {
+    background-color: @sidebar-accent;
+    color: @sidebar-accent-foreground;
 }

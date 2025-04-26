@@ -87,7 +87,7 @@ banking-desktop-app/
 
 For testing purposes, you can use the following demo account:
 - Email: user@example.com
-- Password: password123
+- password: password123
 
 ## Contributing
 
